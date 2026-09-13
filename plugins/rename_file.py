@@ -84,7 +84,7 @@ async def strict_progress(current, total, client, user_id, phase_text, msg, star
         await progress_baar(current, total, phase_text, msg, start_time)
 
 @Client.on_callback_query(filters.private & (filters.regex("cancle_rename")))
-async def cancle_handler(client : Client, callback_query : Callback_query):
+async def cancle_handler(client : Client, callback_query : CallbackQuery):
     user_id  = callback_query.from_user.id
 
     if user_id in user_step:
