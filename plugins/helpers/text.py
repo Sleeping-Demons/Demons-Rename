@@ -14,7 +14,7 @@ sᴇɴᴅ ᴍᴇ ғɪʟᴇs ᴀɴᴅ ᴛʜᴇɴ ɪ sᴛᴀʀᴛ ʀᴇɴᴀᴍɪ�
 """
 
 
-ABOUT_TEXT=f"""<b>𝙳𝚎𝚟𝚎𝚕𝚘𝚙𝚎𝚛</b> :- <b><i><a href="https://t.me/devil_dark_demon">𝙳𝚎𝚟𝚒𝚕</a></i></b>
+ABOUT_TEXT=f"""<b>𝙳𝚎𝚟𝚎𝚕𝚘𝚙𝚎𝚛</b> :- <b><i><a href="https://t.me/eren_yeager021">Eren Yeager</a></i></b>
 <b>𝙼𝙰𝙳𝙴 𝚆𝙸𝚃𝙷</b> :- 𝙿𝚈𝚁𝙾𝙶𝚁𝙰𝙼
 <b>𝙻𝙰𝙽𝙶𝚄𝙰𝙶𝙴</b> :- 𝙿𝚈𝚃𝙷𝙾𝙽
 <b>𝚅𝙴𝚁𝚂𝙸𝙾𝙽</b> :- 𝟷.𝟶.𝟷 """
