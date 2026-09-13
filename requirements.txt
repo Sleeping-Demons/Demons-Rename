@@ -1,0 +1,4 @@
+hydrogram
+python-dotenv
+tgcrypto
+motor

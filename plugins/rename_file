@@ -1,0 +1,95 @@
+import asyncio
+from hydrogram import Client , filters
+from hydrogram.errors import FloodWait, RPCError
+import os
+from db import get_caption,get_thumb
+from config import LOGS_ID
+from .helpers.progress import progress_baar
+import time
+
+channel_id = LOGS_ID
+
+async def send_media(client,chat_id,media,thumb,caption,orignal_message,progress=None,progress_args=None):
+
+    if orignal_message.video:
+        video_obj = orignal_message.video
+        print(video_obj)
+        return await orignal_message.reply_video(video=media,
+		thumb=thumb,
+		caption=caption,
+		duration=video_obj.duration if video_obj else None,
+		width=video_obj.width if video_obj else None,
+		height=video_obj.height if video_obj else None,
+		supports_streaming=True,
+		progress=progress,
+		progress_args=progress_args)
+    elif orignal_message.audio:
+        audio_obj = orignal_message.audio
+        return await orignal_message.reply_audio(audio=media,
+		thumb=thumb,
+		caption=caption,
+		duration=audio_obj.duration if audio_obj else None,
+		progress=progress,
+		progress_args=progress_args)
+    else:
+        return await orignal_message.reply_document(document=media,thumb=thumb,caption=caption,progress=progress,progress_args=progress_args)
+
+async def orignal_name(orignal_message):
+    if orignal_message.video:
+        return orignal_message.video.file_name
+    elif orignal_message.audio:
+        full_name=orignal_message.audio.file_name
+        real_name=os.path.splitext(full_name)[0]
+        return real_name
+    else:
+        full_name=orignal_message.document.file_name
+        real_name=os.path.splitext(full_name)[0]
+        return real_name
+
+@Client.on_message((filters.audio | filters.document | filters.video) & filters.private)
+async def rename(client,message):
+    user_id = message.from_user.id
+
+    msg = await message.reply_text("downloading file...")
+
+    start_time = time.time()
+
+    try:
+        file_path = await client.download_media(message,progress=progress_baar,progress_args=("Downloading",msg,start_time))
+        await msg.edit_text("downloading completed now renaming...")
+
+        ext = os.path.splitext(file_path)[1]
+
+        text=await get_caption(user_id)
+
+        old_name = await orignal_name(message)
+        new_name=text if text else old_name
+
+        new_file_path=f"{new_name}{ext}"
+        thumb = await get_thumb(user_id)
+        thumb = str(thumb)
+        renamed = os.rename(file_path,new_file_path)
+
+        start_time = time.time()
+        await send_media(client,
+            chat_id=message.chat.id,
+            media=new_file_path,
+            thumb=thumb,
+            caption="Here is your document!",
+            orignal_message=message,
+            progress=progress_baar,
+            progress_args=("Uploading",msg,start_time))
+        await msg.delete()
+        if os.path.exists(new_file_path):
+            os.remove(new_file_path)
+
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+
+    except RPCError as e:
+        await client.send_message(chat_id=channel_id,text=f"Error : {e}")
+
+
+@Client.on_message(filters.private & filters.message)
+async def fild_name(client,message):
+    pass
