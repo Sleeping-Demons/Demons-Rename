@@ -147,7 +147,7 @@ async def rename(client,message):
 
         new_file_path=f"{new_name}{ext}"
         thumb = await get_thumb(user_id)
-        thumb = str(thumb)
+        thumb = str(thumb) if thumb else None
         renamed = os.rename(file_path,new_file_path)
 
 

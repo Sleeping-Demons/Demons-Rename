@@ -10,6 +10,10 @@ USERS=db["users"]
 async def add_user(user_id):
     await USERS.insert_one({"user_id":user_id})
 
+async def get_users():
+    users = await USERS.count_documents({})
+    return users
+
 async def add_caption(user_id,caption):
     await USERS.update_one({"user_id":user_id},
 				{"$set":{"caption":caption}}
