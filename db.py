@@ -55,3 +55,30 @@ async def set_thumb_state(user_id,state:str):
 async def get_thumb_state(user_id):
     users = await USERS.find_one({"user_id":user_id})
     return users.get("thumb_state") if users else None
+
+async def set_suffix(user_id,suffix_text):
+    await USERS.update_one({"user_id":user_id},
+				{"$set":{"suffix":suffix_text}}
+				)
+
+async def get_suffix(user_id):
+    user = await USERS.find_one({"user_id":user_id},{"suffix":1})
+    return user.get("suffix") if user else None
+
+async def del_suffix(user_id):
+    await USERS.update_one({"user_id":user_id},{"$unset":{"suffix":""}})
+
+
+
+async def set_prefix(user_id,prefix_text):
+    await USERS.update_one({"user_id":user_id},
+                                {"$set":{"prefix":prefix_text}}
+                                )
+
+async def get_prefix(user_id):
+    user = await USERS.find_one({"user_id":user_id},{"prefix":1})
+    return user.get("prefix") if user else None
+
+async def del_prefix(user_id):
+    await USERS.update_one({"user_id":user_id},{"$unset":{"prefix":""}})
+

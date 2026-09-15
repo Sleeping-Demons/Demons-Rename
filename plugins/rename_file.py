@@ -4,7 +4,7 @@ from hydrogram.errors import FloodWait, RPCError
 from hydrogram.enums import ParseMode
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 import os
-from db import get_caption,get_thumb
+from db import get_caption,get_thumb,get_suffix,get_prefix
 from config import LOGS_ID
 from .helpers.progress import progress_baar
 import time
@@ -145,7 +145,12 @@ async def rename(client,message):
 
         ext = os.path.splitext(file_path)[1]
 
-        new_file_path=f"{new_name}{ext}"
+
+        prefix_text = await get_prefix(user_id)
+        prefix_text = " ".join(prefix_text) if prefix_text else ""
+        suffix_text = await get_suffix(user_id)
+        suffix_text = " ".join(suffix_text) if suffix_text else ""
+        new_file_path=f"{prefix_text} {new_name}{f' {suffix_text}' if suffix_text else ''}{ext}"
         thumb = await get_thumb(user_id)
         thumb = str(thumb) if thumb else None
         renamed = os.rename(file_path,new_file_path)
