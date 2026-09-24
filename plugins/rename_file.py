@@ -11,6 +11,9 @@ import time
 from db import get_caption
 
 channel_id = LOGS_ID
+MAX_CONCURRENT_TASK = 10
+semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASK)
+
 
 async def send_media(client,chat_id,media,thumb,caption,orignal_message,progress=None,progress_args=None):
 
@@ -66,19 +69,25 @@ async def file_name(client,message):
         reply_to_message_id=message.id,
         parse_mode=ParseMode.HTML)
 
-
-    user_step[user_id] = {"media_message":message,
+    active_key = (user_id,prompt_msg.id)
+    user_step[active_key] = {"media_message":message,
                          "prompt_message_id":prompt_msg.id,
                          "is_cancelled" : False,
                          "current_status_message" : prompt_msg}
 
-async def strict_progress(current, total, client, user_id, phase_text, msg, start_time):
-    if user_id in user_step and user_step[user_id].get("is_cancelled"):
+async def strict_progress(current, total, client, user_id,task_key, phase_text, msg, start_time):
+
+    if task_key in user_step and user_step[task_key].get("is_cancelled"):
         try:
             client.stop_transmission()
-        except Exception:
+        except:
             pass
         return
+
+    print(
+    f"{time.time():.2f} [{user_id}] "
+    f"{phase_text}: {current}/{total}"
+)
 
     if msg and start_time:
         await progress_baar(current, total, phase_text, msg, start_time)
@@ -86,108 +95,138 @@ async def strict_progress(current, total, client, user_id, phase_text, msg, star
 @Client.on_callback_query(filters.private & (filters.regex("cancle_rename")))
 async def cancle_handler(client : Client, callback_query : CallbackQuery):
     user_id  = callback_query.from_user.id
+    clicked_msg_id = callback_query.message.id
 
-    if user_id in user_step:
+    target_key = None
 
-        user_step[user_id]["is_cancelled"] = True
-        status_message = user_step[user_id]["current_status_message"]
+    for key , data in user_step.items():
+        if key[0] == user_id and data.get("current_status_message_id") == clicked_message_id:
+            target_key = key
+            break
 
-        if status_message and status_message.id == user_step[user_id]["prompt_message_id"]:
-           try:
-               await client.delete_messages(chat_id=callback_query.message.chat.id, message_ids=status_message.id)
-               await callback_query.message.reply_text("opration cancelled by user")
-               await callback_query.message.delete()
-           except Exception:
-               pass
-           del user_step[user_id]
-        else:
-             await callback_query.answer("no active process to cancle")
+    if not target_key:
+        for key in list(user_step.keys()):
+            if key[0] == user_id:
+                target_key = key
+                break
+
+    if target_key and target_key in user_step:
+        user_step[target_key]["is_cancelled"] = True
+
+        try:
+           await client.delete_messages(chat_id=callback_query.message.chat.id, message_ids=clicked_message_id)
+           await callback_query.message.reply_text("opration cancelled by user")
+           await callback_query.message.delete()
+
+        except:
+            pass
+
+        del user_step[target_key]
+        await callback_query.answer("Process cancelled succesfully")
+    
     else:
-        await callback_query.answer("no active process to cancle")
+         await callback_query.answer("no active process to cancle", show_alert=True)
+
+
+
+
+async def process_rename_worker(client,message,active_key,user_id,new_name,custom_caption):
+
+
+    async with Semphore:
+        msg = await message.reply_text("Downloading file, please wait...", reply_markup=keyboard)
+
+        user_step[active_key]["current_status_message_id"] = msg.id
+        user_step[active_key]["current_status_message"] = msg
+        start_time = time.time()
+
+        try:
+            print(f"{time.time():.2f} [{user_id}] DOWNLOAD START")
+            file_path = asyncio.create_task(await client.download_media(media_message,progress=strict_progress,progress_args=(client,user_id,active_key,"Downloading",msg,start_time)))
+            print(f"{time.time():.2f} [{user_id}] DOWNLOAD END")
+            await msg.edit_text("downloading completed now renaming...",reply_markup=keyboard)
+
+
+
+            if  user_step[active_key].get("is_cancelled" or not file_path):
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+                await msg.edit_text("process cancelled 💢💢")
+                await asyncio.sleep(3)
+                await msg.delete()
+                return
+
+            ext = os.path.splitext(file_path)[1]
+
+
+            prefix_text = await get_prefix(user_id)
+            prefix_text = " ".join(prefix_text) if prefix_text else ""
+            suffix_text = await get_suffix(user_id)
+            suffix_text = " ".join(suffix_text) if suffix_text else ""
+            new_file_path=f"{prefix_text} {new_name}{f' {suffix_text}' if suffix_text else ''}{ext}"
+            thumb = await get_thumb(user_id)
+            thumb = str(thumb) if thumb else None
+            renamed = os.rename(file_path,new_file_path)
+
+
+            if  user_step[active_key].get("is_cancelled" or not file_path):
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+                await msg.edit_text("process cancelled 💢💢")
+                await asyncio.sleep(3)
+                await msg.delete()
+                return
+
+            start_time = time.time()
+            print(f"{time.time():.2f} [{user_id}] UPLOAD START")
+            await send_media(client,
+                chat_id=message.chat.id,
+                media=new_file_path,
+                thumb=thumb,
+                caption=custom_caption if custom_caption else new_file_path ,
+                orignal_message=message,
+                progress=strict_progress,
+                progress_args=(client, user_id, active_key, "Uploading",msg,start_time))
+            print(f"[{user_id}] UPLOAD END")
+            await msg.delete()
+            if os.path.exists(new_file_path):
+                os.remove(new_file_path)
+
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+
+        except RPCError as e:
+            await client.send_message(chat_id=channel_id,text=f"Error : {e}")
+
+
+
+
+
+
 
 @Client.on_message(filters.private & filters.text)
 async def rename(client,message):
     user_id = message.from_user.id
+    active_key = None
 
-    if user_id not in user_step:
+    for key , data in user_step.items():
+        if key[0] == user_id and message.reply_to_message and message.reply_to_message_id == data.get(str("prompt_message_id")):
+            active_key = key
+            break
+
+    if not active_key:
         return
 
-    if not message.reply_to_message or message.reply_to_message.id != user_step[user_id]["prompt_message_id"]:
-        return
-
-    media_message = user_step[user_id]["media_message"]
     new_name = message.text
-
     prompt_message_id = user_step[user_id]["prompt_message_id"]
-
     custom_caption = await get_caption(user_id)
 
     try:
-        await client.delete_messages(chat_id=message.chat.id,message_ids=prompt_message_id)
+        await client.delete_messages(chat_id=message.chat.id,messages_id=prompt_message_id)
         await message.delete()
-    except Exception:
+
+    except:
         pass
-    msg = await message.reply_text("Downloading file, please wait...", reply_markup=keyboard)
 
-    start_time = time.time()
-
-    try:
-        file_path = await client.download_media(media_message,progress=strict_progress,progress_args=(client,user_id,"Downloading",msg,start_time))
-        await msg.edit_text("downloading completed now renaming...",reply_markup=keyboard)
-
-        if user_id not in user_step or user_step[user_id].get("is_cancelled" or not file_path):
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
-            await msg.edit_text("process cancelled 💢💢")
-            await asyncio.sleep(3)
-            await msg.delete()
-            return
-
-        ext = os.path.splitext(file_path)[1]
-
-
-        prefix_text = await get_prefix(user_id)
-        prefix_text = " ".join(prefix_text) if prefix_text else ""
-        suffix_text = await get_suffix(user_id)
-        suffix_text = " ".join(suffix_text) if suffix_text else ""
-        new_file_path=f"{prefix_text} {new_name}{f' {suffix_text}' if suffix_text else ''}{ext}"
-        thumb = await get_thumb(user_id)
-        thumb = str(thumb) if thumb else None
-        renamed = os.rename(file_path,new_file_path)
-
-
-        if user_id not in user_step or user_step[user_id].get("is_cancelled" or not file_path):
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
-            await msg.edit_text("process cancelled 💢💢")
-            await asyncio.sleep(3)
-            await msg.delete()
-            return
-
-        start_time = time.time()
-        await send_media(client,
-            chat_id=message.chat.id,
-            media=new_file_path,
-            thumb=thumb,
-            caption=custom_caption if custom_caption else new_file_path ,
-            orignal_message=message,
-            progress=strict_progress,
-            progress_args=(client, user_id, "Uploading",msg,start_time))
-        await msg.delete()
-        if os.path.exists(new_file_path):
-            os.remove(new_file_path)
-
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-
-    except RPCError as e:
-        await client.send_message(chat_id=channel_id,text=f"Error : {e}")
-
-
-
-
-
-
-
-
+    asyncio.create_task(process_rename_worker(client,message,active_key,user_id,new_name,custom_caption))
 
