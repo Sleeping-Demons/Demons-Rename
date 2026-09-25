@@ -12,7 +12,7 @@ from db import get_caption
 
 channel_id = LOGS_ID
 MAX_CONCURRENT_TASK = 10
-semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASK)
+Semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASK)
 
 
 async def send_media(client,chat_id,media,thumb,caption,orignal_message,progress=None,progress_args=None):
@@ -130,19 +130,32 @@ async def cancle_handler(client : Client, callback_query : CallbackQuery):
 
 
 
-async def process_rename_worker(client,message,active_key,user_id,new_name,custom_caption):
+async def process_rename_worker(client,message,active_key,user_id,new_name,prompt_message_id):
 
 
-    async with Semphore:
+    async with Semaphore:
         msg = await message.reply_text("Downloading file, please wait...", reply_markup=keyboard)
 
+
+        try:
+            await client.delete_messages(chat_id=message.chat.id,messages_id=prompt_message_id)
+            await message.delete()
+
+        except:
+            pass
+
+        custom_caption = await get_caption(user_id)
         user_step[active_key]["current_status_message_id"] = msg.id
         user_step[active_key]["current_status_message"] = msg
+        media_message = user_step[active_key]["media_message"]
         start_time = time.time()
+
+        file_path = None
+        new_file_path = None
 
         try:
             print(f"{time.time():.2f} [{user_id}] DOWNLOAD START")
-            file_path = asyncio.create_task(await client.download_media(media_message,progress=strict_progress,progress_args=(client,user_id,active_key,"Downloading",msg,start_time)))
+            file_path = await client.download_media(media_message,progress=strict_progress,progress_args=(client,user_id,active_key,"Downloading",msg,start_time))
             print(f"{time.time():.2f} [{user_id}] DOWNLOAD END")
             await msg.edit_text("downloading completed now renaming...",reply_markup=keyboard)
 
@@ -218,15 +231,7 @@ async def rename(client,message):
         return
 
     new_name = message.text
-    prompt_message_id = user_step[user_id]["prompt_message_id"]
-    custom_caption = await get_caption(user_id)
+    prompt_message_id = user_step[active_key]["prompt_message_id"]
 
-    try:
-        await client.delete_messages(chat_id=message.chat.id,messages_id=prompt_message_id)
-        await message.delete()
-
-    except:
-        pass
-
-    asyncio.create_task(process_rename_worker(client,message,active_key,user_id,new_name,custom_caption))
+    asyncio.create_task(process_rename_worker(client,message,active_key,user_id,new_name,prompt_message_id))
 
